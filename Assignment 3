@@ -1,1 +1,99 @@
 
+import time
+import sys
+
+sys.setrecursionlimit(5000)
+
+count = 0
+
+def fibonacci_recursive(n):
+    global count
+    count += 1
+
+    if n <= 1:
+        return 1
+
+    return fibonacci_recursive(n - 1) + fibonacci_recursive(n - 2)
+
+
+def fibonacci_memo(n, cache=None):
+    global count
+    count += 1
+
+    if cache is None:
+        cache = {}
+
+    if n <= 1:
+        return 1
+
+    if n in cache:
+        return cache[n]
+
+    cache[n] = fibonacci_memo(n - 1, cache) + fibonacci_memo(n - 2, cache)
+
+    return cache[n]
+
+
+def fibonacci_loop(n):
+    global count
+
+    first = second = 1
+
+    for _ in range(n - 1):
+        count += 1
+        first, second = second, first + second
+
+    return second
+
+
+print(f"{'n':>3} | {'naive calls':>12} {'naive s':>9} | {'memo calls':>10} {'memo s':>9} | {'loop steps':>10} {'loop s':>9}")
+
+for n in (10, 20, 25, 30, 32):
+    results = []
+
+    for function in (fibonacci_recursive, fibonacci_memo, fibonacci_loop):
+        count = 0
+        start = time.perf_counter()
+        answer = function(n)
+        elapsed = time.perf_counter() - start
+
+        results.append((count, elapsed, answer))
+
+    assert results[0][2] == results[1][2] == results[2][2]
+
+    print(
+        f"{n:>3} | {results[0][0]:>12} {results[0][1]:>9.5f} | "
+        f"{results[1][0]:>10} {results[1][1]:>9.6f} | "
+        f"{results[2][0]:>10} {results[2][1]:>9.6f}"
+    )
+
+
+for n in (500, 1000):
+    results = []
+
+    for function in (fibonacci_memo, fibonacci_loop):
+        count = 0
+        start = time.perf_counter()
+        answer = function(n)
+        elapsed = time.perf_counter() - start
+
+        results.append((count, elapsed, answer))
+
+    print(
+        n, "memo calls", results[0][0],
+        f"{results[0][1]:.6f}s",
+        "| loop steps", results[1][0],
+        f"{results[1][1]:.6f}s",
+        "| equal:", results[0][2] == results[1][2]
+    )
+
+
+count = 0
+start = time.perf_counter()
+fibonacci_recursive(35)
+
+print(
+    "naive 35: calls", count,
+    f"{time.perf_counter()-start:.3f}s"
+)
+
