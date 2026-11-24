@@ -1,1 +1,185 @@
 
+import re
+import time
+import random
+
+TITLES = {"dr", "mr", "mrs", "ms", "prof", "shri", "smt"}
+
+def clean_phone(phone):
+    digits = re.sub(r"\D", "", phone or "")
+    return digits[-10:] if len(digits) >= 10 else ""
+
+def clean_name(name):
+    words = re.findall(r"[a-z]+", (name or "").lower())
+    return " ".join(w for w in words if w not in TITLES)
+
+def get_keys(contact):
+    keys = set()
+
+    for phone in contact.get("phones", []):
+        number = clean_phone(phone)
+        if number:
+            keys.add("n:" + number)
+
+    for email in contact.get("emails", []):
+        email = email.strip().lower()
+        if email:
+            keys.add("e:" + email)
+
+    return keys
+
+def merge_contacts(contacts):
+    records = {}
+    lookup = {}
+    counter = 0
+
+    for contact in contacts:
+        keys = get_keys(contact)
+        matched = {lookup[k] for k in keys if k in lookup}
+
+        if matched:
+            record_id = min(matched)
+
+            for old_id in matched - {record_id}:
+                old = records.pop(old_id)
+
+                for field in ("names", "phones", "emails"):
+                    records[record_id][field].update(old[field])
+
+                for phone in old["phones"]:
+                    lookup["n:" + phone] = record_id
+
+                for email in old["emails"]:
+                    lookup["e:" + email] = record_id
+        else:
+            record_id = counter
+            counter += 1
+            records[record_id] = {
+                "names": set(),
+                "phones": set(),
+                "emails": set()
+            }
+
+        current = records[record_id]
+
+        name = clean_name(contact.get("name"))
+        if name:
+            current["names"].add(name)
+
+        current["phones"].update(
+            clean_phone(p) for p in contact.get("phones", [])
+            if clean_phone(p)
+        )
+
+        current["emails"].update(
+            e.strip().lower() for e in contact.get("emails", [])
+            if e.strip()
+        )
+
+        for key in keys:
+            lookup[key] = record_id
+
+    return list(records.values())
+
+
+small = [
+    {"name": "Dr. Ravi", "phones": ["+91 98400 12345"], "emails": []},
+    {"name": "ravi kumar", "phones": ["9840012345", "098400 12345"], "emails": ["Ravi@x.com"]},
+    {"name": "Meena", "phones": ["98765 43210"], "emails": []},
+    {"name": "Ravi Kumar", "phones": ["9000000001"], "emails": []},
+    {"name": "M. Meena", "phones": [], "emails": ["meena@x.com"]},
+    {"name": "Meena S", "phones": ["+91-98765-43210"], "emails": ["meena@x.com"]},
+    {"name": "", "phones": ["044 2345 6789"], "emails": []},
+    {"name": "Anil", "phones": [], "emails": []},
+]
+
+result = merge_contacts(small)
+
+for record in sorted(result, key=lambda x: sorted(x["phones"])):
+    print({k: sorted(v) for k, v in record.items()})
+
+print("records:", len(result),
+      "(hand-merged expectation: 5 = Ravi, Ravi Kumar #2, Meena group, landline, Anil)")
+
+assert len(result) == 5
+
+
+def pairwise_merge(contacts):
+    keys = [get_keys(c) for c in contacts]
+    parent = list(range(len(keys)))
+
+    def find(x):
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            if keys[i] & keys[j]:
+                parent[find(i)] = find(j)
+
+    return len({
+        find(i) for i in range(len(keys)) if keys[i]
+    }) + sum(1 for k in keys if not k)
+
+
+def generate_data(size):
+    random.seed(11)
+    people = max(1, int(size / 2.5))
+
+    numbers = [
+        "9%09d" % random.randrange(10**9)
+        for _ in range(people)
+    ]
+
+    formats = [
+        lambda x: x,
+        lambda x: "+91 %s %s" % (x[:5], x[5:]),
+        lambda x: "0" + x,
+        lambda x: "%s-%s" % (x[:5], x[5:])
+    ]
+
+    names = [
+        "Dr. Ravi", "ravi kumar", "Meena S",
+        "Arun", "Priya R", "Mr. Karthik"
+    ]
+
+    data = []
+
+    for _ in range(size):
+        person = random.randrange(people)
+
+        data.append({
+            "name": random.choice(names),
+            "phones": [random.choice(formats)(numbers[person])],
+            "emails": []
+        })
+
+    return data, people
+
+
+print("\n%9s %14s %16s %16s" %
+      ("contacts", "merged records", "dict merge ms", "pairwise ms"))
+
+for size in (1000, 4000, 100000):
+    contacts, people = generate_data(size)
+
+    start = time.perf_counter()
+    merged = merge_contacts(contacts)
+    dict_time = time.perf_counter() - start
+
+    if size <= 4000:
+        start = time.perf_counter()
+        count = pairwise_merge(contacts)
+        pair_time = time.perf_counter() - start
+
+        assert count == len(merged)
+        pair_output = "%.1f" % (pair_time * 1e3)
+    else:
+        pair_output = "~%.0f s (est.)" % (
+            pair_time / (4000**2) * size**2
+        )
+
+    print("%9d %14d %16.1f %16s" %
+          (size, len(merged), dict_time * 1e3, pair_output))
+
