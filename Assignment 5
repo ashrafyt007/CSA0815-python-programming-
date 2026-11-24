@@ -1,1 +1,114 @@
 
+import re
+import math
+from collections import Counter
+
+POSITIVE = {"good", "clean", "fast", "helpful", "improved"}
+NEGATIVE = {"bad", "dirty", "slow", "rude", "smoke", "broken"}
+
+NEGATION = {"not", "never", "no"}
+
+POSITIVE_EXTRA = POSITIVE | {
+    "great", "wonderful", "polite", "thanks", "thank",
+    "happy", "nice", "kind", "grateful", "quickly",
+    "better", "solved"
+}
+
+NEGATIVE_EXTRA = NEGATIVE | {
+    "terrible", "ignored", "crashes", "crashed", "wrong",
+    "late", "smelly", "noise", "unsafe", "sick"
+}
+
+STOP_WORDS = set(
+    "a an the and or but is are was were be been to of in on at "
+    "for with it this that i we you he she they my our your their "
+    "me us them from by as so if then than there here do did does "
+    "have has had not no never very please also just again will "
+    "would can could".split()
+)
+
+
+def extract_words(text):
+    return re.findall(r"[a-z0-9']+", text.lower())
+
+
+def calculate_score(text, positive=POSITIVE, negative=NEGATIVE):
+    words = extract_words(text)
+    total = 0
+
+    for index, word in enumerate(words):
+        if word in positive:
+            value = 1
+        elif word in negative:
+            value = -1
+        else:
+            value = 0
+
+        if value != 0 and index > 0:
+            if words[index - 1] in NEGATION:
+                value = -value
+
+        total += value
+
+    return total
+
+
+def classify(text, positive=POSITIVE, negative=NEGATIVE):
+    result = calculate_score(text, positive, negative)
+
+    if result > 0:
+        return "positive"
+    elif result < 0:
+        return "negative"
+    else:
+        return "neutral"
+
+
+def split_sentences(text):
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    return [part.strip() for part in parts if part.strip()]
+
+
+def summarise(text, k=1):
+    sentence_list = split_sentences(text)
+
+    if len(sentence_list) <= k:
+        return sentence_list, list(range(len(sentence_list)))
+
+    frequency = Counter(
+        word for word in extract_words(text)
+        if word not in STOP_WORDS
+    )
+
+    scores = []
+
+    for sentence in sentence_list:
+        value = sum(
+            frequency[word]
+            for word in extract_words(sentence)
+            if word not in STOP_WORDS
+        )
+        scores.append(value)
+
+    selected = sorted(
+        sorted(
+            range(len(sentence_list)),
+            key=lambda i: (-scores[i], i)
+        )[:k]
+    )
+
+    return [sentence_list[i] for i in selected], selected
+
+
+def first_k(text, k=1):
+    sentence_list = split_sentences(text)[:k]
+    return sentence_list, list(range(len(sentence_list)))
+
+
+# --- Multinomial Naive Bayes with Laplace smoothing ---
+
+class NB:
+
+    def fit(self, docs, labels):
+        pass
+
